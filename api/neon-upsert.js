@@ -69,6 +69,25 @@ function sanitizeValue(col, value) {
   return value;
 }
 
+function buildConflictKey(row, keyCols) {
+  return keyCols.map((col) => {
+    const v = row[col];
+    return v == null ? "__NULL__" : String(v);
+  }).join("||");
+}
+
+function deduplicateByKey(rows, keyCols) {
+  const map = new Map();
+
+  for (const row of rows) {
+    const key = buildConflictKey(row, keyCols);
+    // mantém a última ocorrência
+    map.set(key, row);
+  }
+
+  return Array.from(map.values());
+}
+
 export default async function handler(req, res) {
   try {
     if (req.method !== "POST") {
@@ -144,7 +163,7 @@ export default async function handler(req, res) {
       throw new Error("Nenhuma coluna-chave corresponde às colunas reais da tabela no Neon.");
     }
 
-    const linhas = linhasOriginais.map(linha => {
+    const linhasMapeadas = linhasOriginais.map(linha => {
       const novaLinha = {};
       Object.keys(mapeamentoEntradaParaTabela).forEach(colEntrada => {
         const colTabela = mapeamentoEntradaParaTabela[colEntrada];
@@ -162,9 +181,19 @@ export default async function handler(req, res) {
       .join(",");
 
     let total = 0;
-    const lotes = chunkArray(linhas, 200);
+    let totalRecebido = 0;
+    let totalDuplicadoNoLote = 0;
 
-    for (const lote of lotes) {
+    const lotes = chunkArray(linhasMapeadas, 200);
+
+    for (const loteOriginal of lotes) {
+      totalRecebido += loteOriginal.length;
+
+      const lote = deduplicateByKey(loteOriginal, colunasChave);
+      totalDuplicadoNoLote += (loteOriginal.length - lote.length);
+
+      if (!lote.length) continue;
+
       const values = [];
       const rowsSql = [];
 
@@ -192,7 +221,9 @@ export default async function handler(req, res) {
 
     return res.json({
       ok: true,
+      linhas_recebidas: totalRecebido,
       linhas_processadas: total,
+      linhas_descartadas_duplicadas_no_lote: totalDuplicadoNoLote,
       colunas_recebidas: colunasEntrada.length,
       colunas_utilizadas: colunasDestino.length,
       colunas_chave_utilizadas: colunasChave
