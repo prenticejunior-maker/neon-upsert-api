@@ -93,7 +93,7 @@ export default async function handler(req, res) {
         DO UPDATE SET ${updateSql}
       `;
 
-      await sql(query, values);
+      await sql.query(query, values);
 
       total += lote.length;
 
