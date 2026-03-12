@@ -70,8 +70,10 @@ export default async function handler(req, res) {
       `,
       [schema, table]
     );
-
-    const colunasTabela = colsResult.rows.map(r => r.column_name);
+    
+    const colunasTabela = colsResult.map(function (r) {
+      return r.column_name;
+    });
 
     if (!colunasTabela.length) {
       throw new Error(`Tabela não encontrada ou sem colunas: ${tabelaDestino}`);
