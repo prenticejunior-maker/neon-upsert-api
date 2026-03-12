@@ -15,9 +15,7 @@ function quoteTable(name) {
 
 function chunkArray(arr, size) {
   const out = [];
-  for (let i = 0; i < arr.length; i += size) {
-    out.push(arr.slice(i, i + size));
-  }
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
   return out;
 }
 
@@ -30,6 +28,45 @@ function normalizeColName(name) {
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "")
     .replace(/_+/g, "_");
+}
+
+function toDateOnly(value) {
+  if (value == null || value === "") return null;
+
+  const txt = String(value).trim();
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(txt)) return txt;
+
+  const br = txt.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (br) return `${br[3]}-${br[2]}-${br[1]}`;
+
+  const isoDateTime = txt.match(/^(\d{4}-\d{2}-\d{2})[ T].*$/);
+  if (isoDateTime) return isoDateTime[1];
+
+  return null;
+}
+
+function toTimestamp(value) {
+  if (value == null || value === "") return null;
+
+  const txt = String(value).trim();
+
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(txt)) return txt;
+
+  const iso = txt.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})/);
+  if (iso) return `${iso[1]} ${iso[2]}`;
+
+  const br = txt.match(/^(\d{2})\/(\d{2})\/(\d{4})[ ](\d{2}:\d{2}:\d{2})$/);
+  if (br) return `${br[3]}-${br[2]}-${br[1]} ${br[4]}`;
+
+  return null;
+}
+
+function sanitizeValue(col, value) {
+  if (col === "data") return toDateOnly(value);
+  if (col === "data_processamento") return toTimestamp(value);
+  if (value === "") return null;
+  return value;
 }
 
 export default async function handler(req, res) {
@@ -59,7 +96,6 @@ export default async function handler(req, res) {
 
     const { schema, table } = quoteTable(tabelaDestino);
 
-    // Lê as colunas reais da tabela no Neon
     const colsResult = await sql.query(
       `
       SELECT column_name
@@ -70,7 +106,7 @@ export default async function handler(req, res) {
       `,
       [schema, table]
     );
-    
+
     const colunasTabela = colsResult.map(function (r) {
       return r.column_name;
     });
@@ -79,13 +115,11 @@ export default async function handler(req, res) {
       throw new Error(`Tabela não encontrada ou sem colunas: ${tabelaDestino}`);
     }
 
-    // Índice normalizado das colunas reais da tabela
     const mapaTabela = {};
     colunasTabela.forEach(col => {
       mapaTabela[normalizeColName(col)] = col;
     });
 
-    // Descobre quais colunas da planilha existem na tabela
     const colunasEntrada = Object.keys(linhasOriginais[0]);
     const mapeamentoEntradaParaTabela = {};
 
@@ -102,7 +136,6 @@ export default async function handler(req, res) {
       throw new Error("Nenhuma coluna da planilha corresponde às colunas da tabela no Neon.");
     }
 
-    // Mapeia colunas-chave
     const colunasChave = colunasChaveOriginais
       .map(c => mapaTabela[normalizeColName(c)])
       .filter(Boolean);
@@ -111,12 +144,11 @@ export default async function handler(req, res) {
       throw new Error("Nenhuma coluna-chave corresponde às colunas reais da tabela no Neon.");
     }
 
-    // Remonta as linhas com os nomes corretos da tabela
     const linhas = linhasOriginais.map(linha => {
       const novaLinha = {};
       Object.keys(mapeamentoEntradaParaTabela).forEach(colEntrada => {
         const colTabela = mapeamentoEntradaParaTabela[colEntrada];
-        novaLinha[colTabela] = linha[colEntrada] ?? null;
+        novaLinha[colTabela] = sanitizeValue(colTabela, linha[colEntrada]);
       });
       return novaLinha;
     });
