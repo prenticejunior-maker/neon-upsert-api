@@ -1,55 +1,43 @@
-import { Pool } from "pg";
+import { neon } from "@neondatabase/serverless";
 
-const pool = new Pool({
-  connectionString: process.env.NEON_DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
-});
+const sql = neon(process.env.DATABASE_URL);
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({
-      ok: false,
-      erro: "Método não permitido. Use POST."
-    });
-  }
-
   try {
-    const authHeader = req.headers.authorization || "";
-    const tokenRecebido = authHeader.replace("Bearer ", "").trim();
-    const tokenEsperado = process.env.API_TOKEN;
+    if (req.method !== "POST") {
+      return res.status(405).json({
+        ok: false,
+        erro: "Método não permitido. Use POST."
+      });
+    }
 
-    if (!tokenRecebido || tokenRecebido !== tokenEsperado) {
+    const auth = req.headers.authorization || "";
+    if (auth !== `Bearer ${process.env.API_TOKEN}`) {
       return res.status(401).json({
         ok: false,
-        erro: "Token inválido."
+        erro: "Unauthorized"
       });
     }
 
-    const client = await pool.connect();
+    const inicio = new Date();
 
-    try {
-      const inicio = new Date();
+    await sql`call teste_desenvolvimento.prc_etl_receita_rede();`;
 
-      await client.query("CALL teste_desenvolvimento.prc_etl_receita_rede();");
+    const fim = new Date();
 
-      const fim = new Date();
+    return res.status(200).json({
+      ok: true,
+      mensagem: "Procedure executada com sucesso.",
+      procedure: "teste_desenvolvimento.prc_etl_receita_rede",
+      inicio: inicio.toISOString(),
+      fim: fim.toISOString()
+    });
 
-      return res.status(200).json({
-        ok: true,
-        mensagem: "Procedure executada com sucesso.",
-        procedure: "teste_desenvolvimento.prc_etl_receita_rede",
-        inicio: inicio.toISOString(),
-        fim: fim.toISOString()
-      });
-    } finally {
-      client.release();
-    }
-  } catch (error) {
-    console.error("Erro ao executar procedure:", error);
-
+  } catch (e) {
     return res.status(500).json({
       ok: false,
-      erro: error.message || String(error)
+      erro: e.message,
+      stack: e.stack
     });
   }
 }
