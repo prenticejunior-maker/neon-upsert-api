@@ -2,16 +2,14 @@ import { Pool } from "pg";
 
 const pool = new Pool({
   connectionString: process.env.NEON_DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false,
-  },
+  ssl: { rejectUnauthorized: false }
 });
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({
       ok: false,
-      erro: "Método não permitido. Use POST.",
+      erro: "Método não permitido. Use POST."
     });
   }
 
@@ -23,7 +21,7 @@ export default async function handler(req, res) {
     if (!tokenRecebido || tokenRecebido !== tokenEsperado) {
       return res.status(401).json({
         ok: false,
-        erro: "Token inválido.",
+        erro: "Token inválido."
       });
     }
 
@@ -41,15 +39,17 @@ export default async function handler(req, res) {
         mensagem: "Procedure executada com sucesso.",
         procedure: "teste_desenvolvimento.prc_etl_receita_rede",
         inicio: inicio.toISOString(),
-        fim: fim.toISOString(),
+        fim: fim.toISOString()
       });
     } finally {
       client.release();
     }
   } catch (error) {
+    console.error("Erro ao executar procedure:", error);
+
     return res.status(500).json({
       ok: false,
-      erro: error.message || String(error),
+      erro: error.message || String(error)
     });
   }
 }
